@@ -27,6 +27,8 @@ export const App: React.FC = () => {
   const [error, setError] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
 
+  const [resetSignal, setResetSignal] = useState(0);
+
   // Load todos from API
   const loadTodos = async () => {
     setError('');
@@ -112,10 +114,12 @@ export const App: React.FC = () => {
       });
 
       setTodos(prev => [...prev, created]);
+      setResetSignal(prev => prev + 1);
+      setTempTodo(null);
     } catch {
       setError('Unable to add a todo');
-    } finally {
       setTempTodo(null);
+    } finally {
       setIsAdding(false);
     }
   };
@@ -128,6 +132,7 @@ export const App: React.FC = () => {
     try {
       await deleteTodo(id);
       setTodos(prev => prev.filter(t => t.id !== id));
+      setResetSignal(prev => prev + 1);
     } catch {
       setError('Unable to delete a todo');
     } finally {
@@ -162,22 +167,17 @@ export const App: React.FC = () => {
     setLoadingIds(prev => [...prev, ...ids]);
 
     try {
-      const updates = todos.map(t =>
-        updateTodo(t.id, { completed: shouldComplete }),
+      const results = await Promise.allSettled(
+        todos.map(t => updateTodo(t.id, { completed: shouldComplete })),
       );
-      const results = await Promise.allSettled(updates);
 
-      const final: Todo[] = [];
+      const updated = todos.map((todo, index) => {
+        const res = results[index];
 
-      results.forEach((res, i) => {
-        if (res.status === 'fulfilled') {
-          final.push(res.value);
-        } else {
-          final.push(todos[i]);
-        }
+        return res.status === 'fulfilled' ? res.value : todo;
       });
 
-      setTodos(final);
+      setTodos(updated);
     } finally {
       setLoadingIds([]);
     }
@@ -187,7 +187,7 @@ export const App: React.FC = () => {
   const handleClearCompleted = async () => {
     const completed = todos.filter(t => t.completed);
 
-    if (completed.length === 0) {
+    if (!completed.length) {
       return;
     }
 
@@ -200,21 +200,22 @@ export const App: React.FC = () => {
     const results = await Promise.allSettled(
       completed.map(t => deleteTodo(t.id)),
     );
-    let hadError = false;
 
-    results.forEach((res, i) => {
-      if (res.status === 'fulfilled') {
-        setTodos(prev => prev.filter(t => t.id !== completed[i].id));
-      } else {
-        hadError = true;
-      }
-    });
+    const successfullyDeletedIds = completed
+      .filter((_, index) => results[index].status === 'fulfilled')
+      .map(t => t.id);
 
-    if (hadError) {
+    const failed = results.some(r => r.status === 'rejected');
+
+    if (failed) {
       setError('Unable to delete a todo');
     }
 
+    setTodos(prev => prev.filter(t => !successfullyDeletedIds.includes(t.id)));
+
     setLoadingIds(prev => prev.filter(id => !ids.includes(id)));
+
+    setResetSignal(prev => prev + 1);
   };
 
   return (
@@ -227,12 +228,13 @@ export const App: React.FC = () => {
           todosLength={todos.length}
           onAdd={handleAddTodo}
           onToggleAll={handleToggleAll}
-          disabled={isAdding || isLoading}
+          disabled={isAdding}
+          resetSignal={resetSignal}
         />
 
         {/* Global loader overlay */}
         {isLoading && (
-          <div data-cy="TodoLoader" className="modal overlay is-active">
+          <div data-cy="GlobalLoader" className="modal overlay is-active">
             <div className="modal-background has-background-white-ter" />
             <div className="loader" />
           </div>

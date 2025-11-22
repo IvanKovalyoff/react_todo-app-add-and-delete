@@ -7,6 +7,7 @@ type Props = {
   onAdd: (title: string) => void;
   onToggleAll: () => void;
   disabled?: boolean;
+  resetSignal: number;
 };
 
 export const TodoHeader: React.FC<Props> = ({
@@ -15,33 +16,25 @@ export const TodoHeader: React.FC<Props> = ({
   onAdd,
   onToggleAll,
   disabled = false,
+  resetSignal,
 }) => {
   const [title, setTitle] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (inputRef.current) {
+    if (!disabled && inputRef.current) {
       inputRef.current.focus();
     }
-  }, []);
+  }, [disabled, resetSignal]);
 
   useEffect(() => {
-    if (title === '' && inputRef.current) {
-      inputRef.current.focus();
-    }
-  }, [title]);
+    setTitle('');
+  }, [resetSignal]);
 
   const handleSubmit = useCallback(
     (e: React.FormEvent) => {
       e.preventDefault();
-      const trimmed = title.trim();
-
-      if (!trimmed) {
-        return;
-      }
-
-      onAdd(trimmed);
-      setTitle('');
+      onAdd(title);
     },
     [title, onAdd],
   );
@@ -55,7 +48,7 @@ export const TodoHeader: React.FC<Props> = ({
         className={classNames('todoapp__toggle-all', { active: allCompleted })}
         data-cy="ToggleAllButton"
         onClick={onToggleAll}
-        disabled={disabled || todosLength === 0}
+        disabled={todosLength === 0}
         aria-label="Toggle all todos"
       />
 
@@ -71,7 +64,6 @@ export const TodoHeader: React.FC<Props> = ({
           onKeyDown={e => e.key === 'Escape' && setTitle('')}
           disabled={disabled}
         />
-        <button type="submit" hidden disabled={!title.trim() || disabled} />
       </form>
     </header>
   );
